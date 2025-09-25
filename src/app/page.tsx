@@ -1,103 +1,156 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useEffect } from 'react';
+import { toast } from "sonner";
+import Image from 'next/image';
+import { Star } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Episode, Character } from '@/app/episodes/interface';
+import CreateEpisodeForm from '@/app/episodes/components/episodeForm';
+
+export default function EpisodesPage() {
+  const [allEpisodes, setAllEpisodes] = useState<Episode[]>([]);
+  const [favorites, setFavorites] = useState<Episode[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    try {
+      const storedFavorites = localStorage.getItem('favorites');
+      if (storedFavorites) {
+        setFavorites(JSON.parse(storedFavorites));
+      }
+    } catch (error) {
+      console.error("Error al leer de localStorage", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchAllData = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch('https://rickandmortyapi.com/api/episode');
+        const data = await response.json();
+        const apiEpisodes = data.results;
+
+        const episodesWithCharacters: Episode[] = await Promise.all(
+          apiEpisodes.map(async (apiEpisode: any) => {
+            const characterPromises = apiEpisode.characters
+              .slice(0, 5)
+              .map((url: string) => fetch(url).then((res) => res.json()));
+            const characterDetails: Character[] = await Promise.all(characterPromises);
+            return {
+              id: apiEpisode.id,
+              name: apiEpisode.name,
+              air_date: apiEpisode.air_date,
+              episode: apiEpisode.episode,
+              character: characterDetails
+            };
+          })
+        );
+        setAllEpisodes(episodesWithCharacters);
+      } catch (error) {
+        console.error("Error al obtener datos de la API:", error);
+        toast.error("No se pudieron cargar los episodios.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAllData();
+  }, []);
+
+  const handleToggleFavorite = (episode: Episode) => {
+    let updatedFavorites: Episode[] = [];
+    const isAlreadyFavorite = favorites.some(fav => fav.id === episode.id);
+
+    if (isAlreadyFavorite) {
+      updatedFavorites = favorites.filter(fav => fav.id !== episode.id);
+      toast.error(`"${episode.name}" eliminado de favoritos.`);
+    } else {
+      updatedFavorites = [...favorites, episode];
+      toast.success(`"${episode.name}" agregado a favoritos.`);
+    }
+
+    setFavorites(updatedFavorites);
+    try {
+      localStorage.setItem('favorites', JSON.stringify(updatedFavorites));
+    } catch (error) {
+      console.error("Error al guardar en localStorage", error);
+    }
+  };
+
+  const isFavorite = (episodeId: number) => {
+    return favorites.some(fav => fav.id === episodeId);
+  };
+  
+  const addEpisodeToList = (newEpisode: Episode) => {
+    setAllEpisodes(prevEpisodes => [newEpisode, ...prevEpisodes]);
+  };
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 h-screen">
+      
+      <div className="lg:col-span-2 h-full overflow-y-auto pr-2">
+        {isLoading ? (
+          <p>Cargando episodios...</p>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {allEpisodes.map((episode) => (
+              <Card key={episode.id} className="flex flex-col">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle>{episode.name}</CardTitle>
+                      <CardDescription>{`Episodio: ${episode.episode}`}</CardDescription>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => handleToggleFavorite(episode)}>
+                      <Star className="h-5 w-5" fill={isFavorite(episode.id) ? 'gold' : 'none'} color={isFavorite(episode.id) ? 'gold' : 'currentColor'}/>
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-grow">
+                  <p><strong>Fecha de emisión:</strong> {episode.air_date}</p>
+                </CardContent>
+                <CardFooter>
+                  <div className="flex space-x-2">
+                    {episode.character?.slice(0, 5).map((char) => (
+                      <Image key={char.id} src={char.image} alt={char.name} width={30} height={30} className="rounded-full" title={char.name} />
+                    ))}
+                  </div>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      <div className="flex flex-col gap-6 h-full">
+        <div className="h-1/2">
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle>Favoritos</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 overflow-y-auto h-[calc(100%-4rem)]">
+              {favorites.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No has agregado episodios a favoritos.</p>
+              ) : (
+                favorites.map(fav => (
+                  <div key={fav.id} className="flex items-center justify-between p-2 border rounded-md">
+                    <span className="font-medium">{fav.name}</span>
+                    <Button variant="ghost" size="icon" onClick={() => handleToggleFavorite(fav)}>
+                      <Star className="h-5 w-5" fill="gold" color="gold" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+        <div className="h-1/2">
+          <CreateEpisodeForm onAddEpisode={addEpisodeToList} />
+        </div>
+      </div>
+    </main>
   );
 }
